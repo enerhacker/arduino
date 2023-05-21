@@ -5,9 +5,11 @@
 
 //Ethernet és MQTT beállítások
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
-IPAddress server(192, 168, 2, 115);
+EthernetServer server(80); //Webserver
+IPAddress ip(192, 168, 2, 123);
+IPAddress mqttserver(192, 168, 2, 115);
 EthernetClient ethClient;
-PubSubClient client(server, 1883, ethClient);
+PubSubClient client(mqttserver, 1883, ethClient);
 
 //Szenzorok pin beállításai
 #define ABLAK1_PIN 2
@@ -31,9 +33,10 @@ DHT dht(DHT11_PIN, DHT11);
 void setup() {
   //Ethernet inicializálása
   Ethernet.begin(mac);
+  server.begin(); //Webserver
 
   //MQTT inicializálása
-  client.setServer(server, 1883);
+  client.setServer(mqttserver, 1883);
   client.connect("eloter");
 
   //Szenzorok inicializálása
@@ -55,6 +58,73 @@ void loop() {
   hofok = dht.readTemperature();
   motion = digitalRead(PIR_PIN);
   feny = analogRead(LDR_PIN);
+
+  //webserer adatok megjelenítése
+EthernetClient client = server.available();
+  
+  if (client) {
+    String data = "";
+    
+    while (client.connected()) {
+      if (client.available()) {
+        char c = client.read();
+        data += c;
+        
+        if (c == '\n') {
+          break;
+        }
+      }
+    }
+    
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println();
+    
+    client.println("<html>");
+    client.println("<body>");
+    client.println("<h1>Szenzor adatok</h1>");
+    
+    // Ajtó 1 szenzor állapota
+    client.print("Ajto1: ");
+    client.println(digitalRead(AJTO1_PIN) == HIGH ? "Nyitva" : "Zarva");
+    client.println("<br>");
+    
+    // Ablak 1 szenzor állapota
+    client.print("Ablak1: ");
+    client.println(digitalRead(ABLAK1_PIN) == HIGH ? "Nyitva" : "Zarva");
+    client.println("<br>");
+    
+    // Ablak 2 szenzor állapota
+    client.print("Ablak2: ");
+    client.println(digitalRead(ABLAK2_PIN) == HIGH ? "Nyitva" : "Zarva");
+    client.println("<br>");
+    
+    // PIR szenzor állapota
+    client.print("PIR: ");
+    client.println(digitalRead(PIR_PIN) == HIGH ? "Erzekelt mozgast" : "Nincs mozgas");
+    client.println("<br>");
+    
+    // DHT11 hőmérséklet és páratartalom kiolvasása
+    float temperature = dht.readTemperature();
+    float humidity = dht.readHumidity();
+    
+    client.print("Homerszeklet: ");
+    client.print(temperature);
+    client.println(" &#8451;");
+    client.println("<br>");
+    
+    client.print("Paratartalom: ");
+    client.print(humidity);
+    client.println(" %");
+    client.println("<br>");
+    
+    client.println("</body>");
+    client.println("</html>");
+    
+    delay(100);
+    client.stop();
+  }
+}
 
   // Ablak és ajtó állapot küldése MQTT-n
   client.publish("eloter/ablak1", String(ablak1 == HIGH ? "Nyitva" : "Zárva").c_str());
